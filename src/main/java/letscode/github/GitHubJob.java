@@ -12,7 +12,8 @@ import java.util.stream.Collectors;
 public class GitHubJob {
     private final GitHub gitHub;
     private final Gui gui = new Gui();
-    private final Set <Long> allPrsId = new HashSet<>();
+    private final Set<Long> allPrIds = new HashSet<>();
+
     public GitHubJob() {
         try {
             gitHub = new GitHubBuilder()
@@ -32,27 +33,29 @@ public class GitHubJob {
             @Override
             public void run() {
                 try {
-                    myself.getAllRepositories()
+                    boolean notifyForNewPrs = !allPrIds.isEmpty();
+                    HashSet<GHPullRequest> newPrs = new HashSet<>();
+
+                    List<RepositoryDescrtiption> repos = myself.getAllRepositories()
                             .values()
                             .stream()
                             .map(repository -> {
                                 try {
-                                    HashSet<GHPullRequest> newPrs = new HashSet<>();
-
                                     List<GHPullRequest> prs = repository.queryPullRequests()
                                             .list()
                                             .toList();
                                     Set<Long> prIds = prs.stream()
                                             .map(GHPullRequest::getId)
                                             .collect(Collectors.toSet());
-                                    prIds.removeAll(allPrsId);
-                                    allPrsId.addAll(prIds);
+                                    prIds.removeAll(allPrIds);
+                                    allPrIds.addAll(prIds);
                                     prs.forEach(pr -> {
                                         if (prIds.contains(pr.getId())) {
-
+                                            newPrs.add(pr);
                                         }
                                     });
-                                    return new RepositoryDescription(
+
+                                    return new RepositoryDescrtiption(
                                             repository.getFullName(),
                                             repository,
                                             prs
@@ -60,14 +63,23 @@ public class GitHubJob {
                                 } catch (IOException e) {
                                     throw new RuntimeException(e);
                                 }
-                            });
+                            })
+                            .collect(Collectors.toList());
+
+                    gui.setMenu(login, repos);
+
+                    if (notifyForNewPrs) {
+                        newPrs.forEach(pr -> {
+                            gui.showNotification(
+                                    "New PR in " + pr.getRepository().getFullName(),
+                                    pr.getTitle()
+                            );
+                        });
+                    }
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
-
             }
         }, 1000, 1000);
-
     }
-
 }
